@@ -1,2 +1,2 @@
 # nengo_solver_dales
-Nengo solver that respect's Dale's Law (separating excitation and inhibition)
+Nengo solver that respects Dale's Law (separating excitation and inhibition)
