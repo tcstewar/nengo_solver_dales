@@ -1,1 +1,1 @@
-from .dales import DalesL2, DalesNoise, split_exc_inh
+from .dales import DalesL2, split_exc_inh

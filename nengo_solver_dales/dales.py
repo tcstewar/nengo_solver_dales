@@ -57,13 +57,19 @@ class NegativeOnly(nengo.solvers.Solver):
 class DalesL2(nengo.solvers.Solver):
     """Solves for weights subject to Dale's principle."""
 
-    p_inh = NumberParam('p_inh', low=0, high=1)   # proportion of inhibitory neurons
-    reg = NumberParam('reg')                      # regularization
+    p_inh = NumberParam('p_inh', low=0, high=1)        # proportion of inhibitory neurons
+    sparsity = NumberParam('sparsity', low=0, high=1)  # forced sparsity
+    reg = NumberParam('reg')                           # regularization
 
-    def __init__(self, p_inh=0.2, reg=0.1):
+
+    def __init__(self, p_inh=0.2, reg=0.1,
+                 use_noise=False, sparsity=0.0, max_iterations=None):
         super(DalesL2, self).__init__(weights=True)
         self.p_inh = p_inh
         self.reg = reg
+        self.use_noise = use_noise
+        self.sparsity = sparsity
+        self.max_iterations = max_iterations
 
     def __call__(self, A, Y, rng=None, E=None):
         tstart = time.time()
@@ -74,20 +80,39 @@ class DalesL2(nengo.solvers.Solver):
         Y = self.mul_encoders(Y, E, copy=True)
         d = Y.shape[1]
         n_inh = int(self.p_inh * n)
-        
 
-        # form Gram matrix so we can add regularization
-        GA = np.dot(A.T, A)
-        np.fill_diagonal(GA, GA.diagonal() + A.shape[0] * sigma ** 2)
-        GY = np.dot(A.T, Y)
+        if self.use_noise:
+            A_noise = A + rng.normal(scale=sigma, size=A.shape)        
+            A_noise[:, :n_inh] *= (-1)
 
-        GA[:, :n_inh] *= (-1)
+            solver_A = A_noise
+            solver_Y = Y
+        else:
+            # form Gram matrix so we can add regularization
+            GA = np.dot(A.T, A)
+            np.fill_diagonal(GA, GA.diagonal() + A.shape[0] * sigma ** 2)
+            GY = np.dot(A.T, Y)
+            GA[:, :n_inh] *= (-1)
+
+            solver_A = GA
+            solver_Y = GY
 
         X = np.zeros((n, d))
         residuals = np.zeros(d)
         for j in range(d):
-            X[:, j], residuals[j] = nnls(GA, GY[:, j])
+            if self.sparsity > 0:
+                N = solver_Y.shape[0]
+                S = N - int(N*self.sparsity)
+                indices = rng.choice(np.arange(N), S, replace=False)
+                sA = solver_A[indices, :][:, indices]
+                sY = solver_Y[indices, j]
+            else:
+                sA = solver_A
+                sY = solver_Y[:, j]
+                indices = slice(None)
 
+            X[indices, j], residuals[j] = nnls(sA, sY,
+                                               maxiter=self.max_iterations)
 
         X[:n_inh, :] *= (-1)
         
@@ -96,53 +121,12 @@ class DalesL2(nengo.solvers.Solver):
         t = time.time() - tstart
         info = {'rmses': rms,
                 'residuals': residuals/Y.shape[0],
-                'Y': Y,
-                'Yhat': np.dot(A, X),
                 'time': t,
                 'n_inh': n_inh}
 
         return X, info    
 
 
-class DalesNoise(nengo.solvers.Solver):
-    p_inh = NumberParam('p_inh', low=0, high=1)   # proportion of inhibitory neurons
-    reg = NumberParam('reg')                      # regularization
-
-    def __init__(self, p_inh=0.2, reg=0.1):
-        super(DalesNoise, self).__init__(weights=True)
-        self.p_inh = p_inh
-        self.reg = reg
-
-    def __call__(self, A, Y, rng=None, E=None):
-        tstart = time.time()
-        Y, m, n, _, matrix_in = format_system(A, Y)
-                                
-        sigma = self.reg * A.max()
-        A_noise = A + rng.normal(scale=sigma, size=A.shape)        
-
-        Y = self.mul_encoders(Y, E, copy=True)
-        d = Y.shape[1]
-        n_inh = int(self.p_inh * n)
-
-        A_noise[:, :n_inh] *= (-1)
-        X = np.zeros((n, d))
-
-        residuals = np.zeros(d)
-        for j in range(d):
-            X[:, j], residuals[j] = nnls(A_noise, Y[:, j])
-
-        X[:n_inh, :] *= (-1)
-
-        t = time.time() - tstart
-        info = {'rmses': rmses(A, X, Y),
-                'residuals': residuals/Y.shape[0],
-                'Y': Y,
-                'Yhat': np.dot(A, X),
-                'time': t,
-                'n_inh': n_inh}
-
-        return X, info
-    
 def split_exc_inh(conn, net, exc_synapse, inh_synapse):
     net.connections.remove(conn)
 
