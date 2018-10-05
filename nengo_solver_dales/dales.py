@@ -57,33 +57,37 @@ class NegativeOnly(nengo.solvers.Solver):
 class DalesL2(nengo.solvers.Solver):
     """Solves for weights subject to Dale's principle."""
 
-    p_inh = NumberParam('p_inh', low=0, high=1)        # proportion of inhibitory neurons
-    sparsity = NumberParam('sparsity', low=0, high=1)  # forced sparsity
-    reg = NumberParam('reg')                           # regularization
+    # proportion of inhibitory neurons
+    p_inh = NumberParam('p_inh', low=0, high=1)
+
+    # amount of forced sparsity
+    sparsity = NumberParam('sparsity', low=0, high=1)
+
+    # regularization
+    reg = NumberParam('reg')
 
 
     def __init__(self, p_inh=0.2, reg=0.1,
-                 use_noise=False, sparsity=0.0, max_iterations=None):
+                 use_noise=False, sparsity=0.0):
         super(DalesL2, self).__init__(weights=True)
         self.p_inh = p_inh
         self.reg = reg
-        self.use_noise = use_noise
+        self.use_noise = use_noise   # add noise, not diagonal regularization
         self.sparsity = sparsity
-        self.max_iterations = max_iterations
 
     def __call__(self, A, Y, rng=None, E=None):
         tstart = time.time()
         Y, m, n, _, matrix_in = format_system(A, Y)
         
-        sigma = A.max() * self.reg
+        sigma = A.max() * self.reg    # magnitude of noise
 
         Y = self.mul_encoders(Y, E, copy=True)
-        d = Y.shape[1]
+        n_post = Y.shape[1]
         n_inh = int(self.p_inh * n)
 
         if self.use_noise:
+            # just add noise for regularization
             A_noise = A + rng.normal(scale=sigma, size=A.shape)        
-            A_noise[:, :n_inh] *= (-1)
 
             solver_A = A_noise
             solver_Y = Y
@@ -92,30 +96,39 @@ class DalesL2(nengo.solvers.Solver):
             GA = np.dot(A.T, A)
             np.fill_diagonal(GA, GA.diagonal() + A.shape[0] * sigma ** 2)
             GY = np.dot(A.T, Y)
-            GA[:, :n_inh] *= (-1)
 
             solver_A = GA
             solver_Y = GY
 
-        X = np.zeros((n, d))
-        residuals = np.zeros(d)
-        for j in range(d):
+        # flip the sign of the inhibitory neurons so we can do all
+        #  the solving at once as a non-negative minimization
+        solver_A[:, :n_inh] *= -1
+
+        X = np.zeros((n, n_post))
+        residuals = np.zeros(n_post)
+        for j in range(n_post):
             if self.sparsity > 0:
+                # choose random indices to keep
                 N = solver_Y.shape[0]
                 S = N - int(N*self.sparsity)
                 indices = rng.choice(np.arange(N), S, replace=False)
-                sA = solver_A[indices, :][:, indices]
+                if self.use_noise:
+                    sA = solver_A[indices, :]
+                else:
+                    sA = solver_A[indices, :][:, indices]
                 sY = solver_Y[indices, j]
             else:
                 sA = solver_A
                 sY = solver_Y[:, j]
                 indices = slice(None)
 
-            X[indices, j], residuals[j] = nnls(sA, sY,
-                                               maxiter=self.max_iterations)
+            # call nnls to do the non-negative least-squares minimization
+            X[indices, j], residuals[j] = nnls(sA, sY)
 
+        # flip the sign of the weights for the inhibitory neurons
         X[:n_inh, :] *= (-1)
         
+        # compute the resulting rmse
         rms = rmses(A, X, Y)
         
         t = time.time() - tstart
@@ -128,6 +141,8 @@ class DalesL2(nengo.solvers.Solver):
 
 
 def split_exc_inh(conn, net, exc_synapse, inh_synapse):
+    """Splits a nengo Connection into separate exc and inh Connections."""
+
     net.connections.remove(conn)
 
     solver_set = SolverSet(conn.solver, limit=2)
