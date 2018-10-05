@@ -72,7 +72,6 @@ class DalesL2(nengo.solvers.Solver):
         super(DalesL2, self).__init__(weights=True)
         self.p_inh = p_inh
         self.reg = reg
-        self.use_noise = use_noise   # add noise, not diagonal regularization
         self.sparsity = sparsity
 
     def __call__(self, A, Y, rng=None, E=None):
@@ -85,24 +84,14 @@ class DalesL2(nengo.solvers.Solver):
         n_post = Y.shape[1]
         n_inh = int(self.p_inh * n)
 
-        if self.use_noise:
-            # just add noise for regularization
-            A_noise = A + rng.normal(scale=sigma, size=A.shape)        
-
-            solver_A = A_noise
-            solver_Y = Y
-        else:
-            # form Gram matrix so we can add regularization
-            GA = np.dot(A.T, A)
-            np.fill_diagonal(GA, GA.diagonal() + A.shape[0] * sigma ** 2)
-            GY = np.dot(A.T, Y)
-
-            solver_A = GA
-            solver_Y = GY
+        # form Gram matrix so we can add regularization
+        GA = np.dot(A.T, A)
+        np.fill_diagonal(GA, GA.diagonal() + A.shape[0] * sigma ** 2)
+        GY = np.dot(A.T, Y)
 
         # flip the sign of the inhibitory neurons so we can do all
         #  the solving at once as a non-negative minimization
-        solver_A[:, :n_inh] *= -1
+        GA[:, :n_inh] *= -1
 
         X = np.zeros((n, n_post))
         residuals = np.zeros(n_post)
@@ -112,14 +101,11 @@ class DalesL2(nengo.solvers.Solver):
                 N = solver_Y.shape[0]
                 S = N - int(N*self.sparsity)
                 indices = rng.choice(np.arange(N), S, replace=False)
-                if self.use_noise:
-                    sA = solver_A[indices, :]
-                else:
-                    sA = solver_A[indices, :][:, indices]
-                sY = solver_Y[indices, j]
+                sA = GA[indices, :][:, indices]
+                sY = GY[indices, j]
             else:
-                sA = solver_A
-                sY = solver_Y[:, j]
+                sA = GA
+                sY = GY[:, j]
                 indices = slice(None)
 
             # call nnls to do the non-negative least-squares minimization
