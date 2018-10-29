@@ -67,8 +67,7 @@ class DalesL2(nengo.solvers.Solver):
     reg = NumberParam('reg')
 
 
-    def __init__(self, p_inh=0.2, reg=0.1,
-                 use_noise=False, sparsity=0.0):
+    def __init__(self, p_inh=0.2, reg=0.1, sparsity=0.0):
         super(DalesL2, self).__init__(weights=True)
         self.p_inh = p_inh
         self.reg = reg
@@ -98,7 +97,7 @@ class DalesL2(nengo.solvers.Solver):
         for j in range(n_post):
             if self.sparsity > 0:
                 # choose random indices to keep
-                N = solver_Y.shape[0]
+                N = GY.shape[0]
                 S = N - int(N*self.sparsity)
                 indices = rng.choice(np.arange(N), S, replace=False)
                 sA = GA[indices, :][:, indices]

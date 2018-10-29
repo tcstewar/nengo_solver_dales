@@ -12,8 +12,8 @@ def test_accuracy():
         a = nengo.Ensemble(n_neurons=100, dimensions=3, seed=1)
         b = nengo.Ensemble(n_neurons=100, dimensions=3, seed=2)
         c1 = nengo.Connection(a, b, solver=nengo.solvers.LstsqL2(weights=True))
-        c2 = nengo.Connection(a, b, solver=nengo_solver_dales.DalesL2(reg=0.1, p_inh=p_inh, use_noise=False))
-        c3 = nengo.Connection(a, b, solver=nengo_solver_dales.DalesL2(reg=0.1, p_inh=p_inh, use_noise=True))
+        c2 = nengo.Connection(a, b, solver=nengo_solver_dales.DalesL2(reg=0.1, p_inh=p_inh, sparsity=0.0))
+        c3 = nengo.Connection(a, b, solver=nengo_solver_dales.DalesL2(reg=0.1, p_inh=p_inh, sparsity=0.2))
     sim = nengo.Simulator(model)
 
     import pylab
