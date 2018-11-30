@@ -15,8 +15,6 @@ from nengo.utils.least_squares_solvers import format_system, rmses
 
 
 def optimize_conns(n_post, sparsity, GY,GA, N, X):
-    print('process id:', os.getpid())
-
     for j in range(n_post):
         if self.sparsity > 0:
             # choose random indices to keep
