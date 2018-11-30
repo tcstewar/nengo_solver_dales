@@ -2,8 +2,6 @@
 #  which is based on https://github.com/nengo/nengo/issues/921
 
 import time
-from multiprocessing import Process
-import os
 
 from scipy.optimize import nnls
 import numpy as np
@@ -12,27 +10,6 @@ import nengo
 from nengo.params import NumberParam, BoolParam
 from nengo.solvers import SolverParam
 from nengo.utils.least_squares_solvers import format_system, rmses
-
-
-def optimize_conns(n_post, sparsity, GY,GA, N, X):
-    print('process id:', os.getpid())
-
-    for j in range(n_post):
-        if self.sparsity > 0:
-            # choose random indices to keep
-            N = GY.shape[0]
-            S = N - int(N*self.sparsity)
-            indices = rng.choice(np.arange(N), S, replace=False)
-            sA = GA[indices, :][:, indices]
-            sY = GY[indices, j]
-        else:
-            sA = GA
-            sY = GY[:, j]
-            indices = slice(None)
-
-        # call nnls to do the non-negative least-squares minimization
-        X[indices, j], residuals[j] = nnls(sA, sY)
-
 
 class SolverSet(nengo.solvers.Solver):
     solver = SolverParam('solver')
@@ -89,12 +66,12 @@ class DalesL2(nengo.solvers.Solver):
     # regularization
     reg = NumberParam('reg')
 
-    def __init__(self, p_inh=0.2, reg=0.1, sparsity=0.0, multiprocess=False):
+
+    def __init__(self, p_inh=0.2, reg=0.1, sparsity=0.0):
         super(DalesL2, self).__init__(weights=True)
         self.p_inh = p_inh
         self.reg = reg
         self.sparsity = sparsity
-        self.multiprocess = multiprocess
 
     def __call__(self, A, Y, rng=None, E=None):
         tstart = time.time()
@@ -117,29 +94,21 @@ class DalesL2(nengo.solvers.Solver):
 
         X = np.zeros((n, n_post))
         residuals = np.zeros(n_post)
+        for j in range(n_post):
+            if self.sparsity > 0:
+                # choose random indices to keep
+                N = GY.shape[0]
+                S = N - int(N*self.sparsity)
+                indices = rng.choice(np.arange(N), S, replace=False)
+                sA = GA[indices, :][:, indices]
+                sY = GY[indices, j]
+            else:
+                sA = GA
+                sY = GY[:, j]
+                indices = slice(None)
 
-        if (self.multiprocess): # if true run each of these on a different core
-            if __name__ == '__main__':
-                info('main line')
-                p = Process(target=optimize_conns, args=(n_post, self.sparsity, GY,GA, N, X))
-                p.start()
-                p.join()
-        else: # otherwise do serial processing
-            for j in range(n_post):
-                if self.sparsity > 0:
-                    # choose random indices to keep
-                    N = GY.shape[0]
-                    S = N - int(N*self.sparsity)
-                    indices = rng.choice(np.arange(N), S, replace=False)
-                    sA = GA[indices, :][:, indices]
-                    sY = GY[indices, j]
-                else:
-                    sA = GA
-                    sY = GY[:, j]
-                    indices = slice(None)
-
-                # call nnls to do the non-negative least-squares minimization
-                X[indices, j], residuals[j] = nnls(sA, sY)
+            # call nnls to do the non-negative least-squares minimization
+            X[indices, j], residuals[j] = nnls(sA, sY)
 
         # flip the sign of the weights for the inhibitory neurons
         X[:n_inh, :] *= (-1)
