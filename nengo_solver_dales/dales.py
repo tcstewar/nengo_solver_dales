@@ -2,7 +2,7 @@
 #  which is based on https://github.com/nengo/nengo/issues/921
 
 import time
-from multiprocessing import Process
+import multiprocessing
 import os
 
 from scipy.optimize import nnls
@@ -12,24 +12,6 @@ import nengo
 from nengo.params import NumberParam, BoolParam
 from nengo.solvers import SolverParam
 from nengo.utils.least_squares_solvers import format_system, rmses
-
-
-def optimize_conns(n_post, sparsity, GY,GA, N, X):
-    for j in range(n_post):
-        if self.sparsity > 0:
-            # choose random indices to keep
-            N = GY.shape[0]
-            S = N - int(N*self.sparsity)
-            indices = rng.choice(np.arange(N), S, replace=False)
-            sA = GA[indices, :][:, indices]
-            sY = GY[indices, j]
-        else:
-            sA = GA
-            sY = GY[:, j]
-            indices = slice(None)
-
-        # call nnls to do the non-negative least-squares minimization
-        X[indices, j], residuals[j] = nnls(sA, sY)
 
 
 class SolverSet(nengo.solvers.Solver):
@@ -116,13 +98,29 @@ class DalesL2(nengo.solvers.Solver):
         X = np.zeros((n, n_post))
         residuals = np.zeros(n_post)
 
-        if (self.multiprocess): # if true run each of these on a different core
-            if __name__ == '__main__':
-                info('main line')
-                p = Process(target=optimize_conns, args=(n_post, self.sparsity, GY,GA, N, X))
-                p.start()
-                p.join()
-        else: # otherwise do serial processing
+        if self.multiprocess:
+            pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+            args = []
+            if self.sparsity > 0:
+                all_indices = []
+                for j in range(n_post):
+                    N = GY.shape[0]
+                    S = N - int(N*self.sparsity)
+                    indices = rng.choice(np.arange(N), S, replace=False)
+                    args.append((GA[indices, :][:, indices], GY[indices, j]))
+                    all_indices.append(indices)
+                r = pool.starmap(nnls, args)
+                for j, (XX, res) in enumerate(r):
+                    X[all_indices[j],j] = XX
+                    residuals[j] = res
+            else:
+                for j in range(n_post):
+                    args.append((GA, GY[:, j]))
+                r = pool.starmap(nnls, args)
+                for j, (XX, res) in enumerate(r):
+                    X[:,j] = XX
+                    residuals[j] = res
+        else:
             for j in range(n_post):
                 if self.sparsity > 0:
                     # choose random indices to keep
