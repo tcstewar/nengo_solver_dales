@@ -13,6 +13,8 @@ from nengo.params import NumberParam, BoolParam
 from nengo.solvers import SolverParam
 from nengo.utils.least_squares_solvers import format_system, rmses
 
+from .vendorized import nnls_predotted
+
 
 class SolverSet(nengo.solvers.Solver):
     solver = SolverParam('solver')
@@ -69,12 +71,14 @@ class DalesL2(nengo.solvers.Solver):
     # regularization
     reg = NumberParam('reg')
 
-    def __init__(self, p_inh=0.2, reg=0.1, sparsity=0.0, multiprocess=False):
+    def __init__(self, p_inh=0.2, reg=0.1, sparsity=0.0, multiprocess=False, 
+                 tol=None):
         super(DalesL2, self).__init__(weights=True)
         self.p_inh = p_inh
         self.reg = reg
         self.sparsity = sparsity
         self.multiprocess = multiprocess
+        self.tol = tol
 
     def __call__(self, A, Y, rng=None, E=None):
         tstart = time.time()
@@ -135,7 +139,11 @@ class DalesL2(nengo.solvers.Solver):
                     indices = slice(None)
 
                 # call nnls to do the non-negative least-squares minimization
-                X[indices, j], residuals[j] = nnls(sA, sY)
+                if self.tol is None:
+                    X[indices, j], residuals[j] = nnls(sA, sY)
+                else:
+                    X[indices, j] = nnls_predotted(sA, sY, self.tol)
+
 
         # flip the sign of the weights for the inhibitory neurons
         X[:n_inh, :] *= (-1)
