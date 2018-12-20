@@ -120,7 +120,12 @@ class DalesL2(nengo.solvers.Solver):
             else:
                 for j in range(n_post):
                     args.append((GA, GY[:, j]))
-                r = pool.starmap(nnls, args)
+                if self.tol is None:
+                    r = pool.starmap(nnls, args)
+                else:
+                    args2 = [(a[0], a[1], self.tol) for a in args]
+                    r2 = pool.starmap(nnls_predotted, args2)
+                    r = [(rr, 0) for rr in r2]
                 for j, (XX, res) in enumerate(r):
                     X[:,j] = XX
                     residuals[j] = res
