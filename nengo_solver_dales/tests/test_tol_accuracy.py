@@ -6,10 +6,10 @@ import nengo_solver_dales
 from nengo.utils.least_squares_solvers import rmses
 
 def test_accuracy():
-    N = 100
+    N = 200
     p_inh = 0.2
     sparsity = 0.5
-    tols = [None, 1e-80, 1e-40, 1e-30, 1e-12,]# 1e-10, 1e-8, 1e-6, 1e-4, 1e-2]
+    tols = [None, 1e-80, 1e-40, 1e-30, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2]
     model = nengo.Network(seed=0)
     with model:
         a = nengo.Ensemble(n_neurons=N, dimensions=3, seed=1)
@@ -36,4 +36,10 @@ def test_accuracy():
         pylab.subplot(1, len(tols), i+1)
         pylab.scatter(target, actuals[i], s=1)
         pylab.title(rms[i])
+
+    pylab.figure()
+    pylab.plot(rms)
+    pylab.twinx()
+    pylab.plot(ts)
+    pylab.xticks(range(len(tols)), tols)
     pylab.show()

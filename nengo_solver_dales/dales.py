@@ -90,14 +90,14 @@ class DalesL2(nengo.solvers.Solver):
         n_post = Y.shape[1]
         n_inh = int(self.p_inh * n)
 
+        # flip the sign of the inhibitory neurons so we can do all
+        #  the solving at once as a non-negative minimization
+        A[:, :n_inh] *= -1
+
         # form Gram matrix so we can add regularization
         GA = np.dot(A.T, A)
         np.fill_diagonal(GA, GA.diagonal() + A.shape[0] * sigma ** 2)
         GY = np.dot(A.T, Y)
-
-        # flip the sign of the inhibitory neurons so we can do all
-        #  the solving at once as a non-negative minimization
-        GA[:, :n_inh] *= -1
 
         X = np.zeros((n, n_post))
         residuals = np.zeros(n_post)
